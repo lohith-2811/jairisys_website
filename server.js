@@ -11,7 +11,7 @@ const port = process.env.PORT || 5000;
 // Middleware
 app.use(bodyParser.json());
 app.use(cors({
-  origin: ['https://lohith-2811.github.io', 'https://lohith-2811.github.io/jairisys_main_website'], // Allow multiple origins
+  origin: ['https://lohith-2811.github.io', 'https://jairisys.tech'], // Allow multiple origins
   methods: ['GET', 'POST'], // Allowed HTTP methods
   credentials: true, // Allow cookies and credentials
 }));
