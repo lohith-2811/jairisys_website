@@ -20,8 +20,8 @@ app.use(cors({
 const SHEET_ID = process.env.SHEET_ID;
 const EMAIL_SHEET_ID = process.env.EMAIL_SHEET_ID;
 const CREDENTIALS = JSON.parse(process.env.GOOGLE_CREDENTIALS);
-const EMAIL_USER = process.env.EMAIL_USER;
-const EMAIL_PASSWORD = process.env.EMAIL_PASSWORD;
+const BREVO_USER = process.env.BREVO_USER; // Brevo SMTP user
+const BREVO_SMTP_KEY = process.env.BREVO_SMTP_KEY; // Brevo SMTP key
 
 // Authenticate with Google Sheets API
 const auth = new google.auth.GoogleAuth({
@@ -30,26 +30,32 @@ const auth = new google.auth.GoogleAuth({
 });
 const sheets = google.sheets({ version: 'v4', auth });
 
-// Function to send email
+// Function to send email using Brevo SMTP
 async function sendEmail(to, subject, text) {
   if (!to) {
     throw new Error('No recipients defined');
   }
 
   let transporter = nodemailer.createTransport({
-    service: 'gmail',
+    host: 'smtp-relay.brevo.com', // Brevo SMTP server
+    port: 587, // Brevo SMTP port
+    secure: false, // TLS
     auth: {
-      user: EMAIL_USER,
-      pass: EMAIL_PASSWORD,
+      user: BREVO_USER, // Brevo SMTP login
+      pass: BREVO_SMTP_KEY, // Brevo SMTP key
     },
   });
 
   let mailOptions = {
-    from: EMAIL_USER,
+    from: 'Jairisys <info@jairisys.tech>', // Sender name and address
     to: to,
     subject: subject,
     text: text,
   };
+
+  console.log('Sending email to:', to); // Debug log
+  console.log('Email subject:', subject); // Debug log
+  console.log('Email content:', text); // Debug log
 
   return transporter.sendMail(mailOptions);
 }
@@ -63,6 +69,7 @@ function isValidEmail(email) {
 // Endpoint to handle form submission
 app.post('/submit', async (req, res) => {
   const formData = req.body;
+  console.log('Form Data Received:', formData);
 
   try {
     // Append form data to the spreadsheet
@@ -87,22 +94,23 @@ app.post('/submit', async (req, res) => {
         ],
       },
     });
+    console.log('Form data appended to Google Sheet.');
 
     // Retrieve specific emails from cells A1, A2, and A3
     const emailResponse = await sheets.spreadsheets.values.batchGet({
       spreadsheetId: SHEET_ID,
       ranges: ['Sheet1!A1', 'Sheet1!A2', 'Sheet1!A3'],
     });
+    console.log('Email Response:', emailResponse.data);
 
     const emailAddresses = emailResponse.data.valueRanges
       .map(range => range.values && range.values[0] ? range.values[0][0] : null)
       .filter(email => email);
-
-    console.log('Retrieved Email Addresses:', emailAddresses); // Debug log to check email addresses
+    console.log('Retrieved Email Addresses:', emailAddresses);
 
     // Filter out invalid email addresses
     const validEmailAddresses = emailAddresses.filter(isValidEmail);
-    console.log('Valid Email Addresses:', validEmailAddresses); // Debug log to check valid email addresses
+    console.log('Valid Email Addresses:', validEmailAddresses);
 
     // Check if valid email addresses are retrieved
     if (validEmailAddresses.length === 0) {
@@ -111,7 +119,7 @@ app.post('/submit', async (req, res) => {
 
     // Send saved form data to each valid email address
     for (const email of validEmailAddresses) {
-      console.log('Sending email to:', email); // Debug log to check email sending
+      console.log('Sending email to:', email);
 
       const savedData = `
         First Name: ${formData.first_name}
@@ -127,12 +135,13 @@ app.post('/submit', async (req, res) => {
       `;
       
       await sendEmail(email, 'Form Submission Data', savedData);
+      console.log('Email sent successfully to:', email);
     }
 
     res.status(200).send('Form data saved and emails sent successfully!');
   } catch (error) {
     console.error('Error saving form data or sending emails:', error);
-    res.status(500).send('Error saving form data or sending emails');
+    res.status(500).send(`Error saving form data or sending emails: ${error.message}`);
   }
 });
 
@@ -163,7 +172,6 @@ app.post('/send-contact-email', async (req, res) => {
   }
 });
 
-// New route to handle "Get Updates" form submission
 app.post('/subscribe', async (req, res) => {
   const { email } = req.body;
 
@@ -184,9 +192,35 @@ app.post('/subscribe', async (req, res) => {
     });
 
     // Send a confirmation email to the user
-    const subject = 'Thank You for Subscribing!';
-    const text = `You have successfully subscribed to Jairisys updates. We will notify you about upcoming products and new updates.`;
-    await sendEmail(email, subject, text);
+    const subject = '🌟 Welcome to Jairisys! Your Journey Starts Here 🚀';
+    const text = `
+Hello,
+
+🌟 Welcome to Jairisys! Enjoy exciting updates, sleek products, and cutting-edge features. 💻✨
+
+Stay tuned for exclusive previews, beta releases, and all the latest news! 🚀
+
+Thank you for subscribing – the future of software is brighter with you on board! ✨
+Best regards,
+The Jairisys Team
+`;
+
+    const html = `
+      <p>Hello,</p>
+      <p>🌟 Welcome to Jairisys! Enjoy exciting updates, sleek products, and cutting-edge features. 💻✨</p>
+      <p>Stay tuned for exclusive previews and news! 🚀</p>
+      <p>Thank you for subscribing – the future is brighter with you! ✨</p>
+      <p>Best regards,<br>The Jairisys Team</p>
+    `;
+
+    // Print email details for debugging
+    console.log('Sending email to:', email);
+    console.log('Email subject:', subject);
+    console.log('Email content (text):', text);
+    console.log('Email content (HTML):', html);
+
+    // Call the sendEmail function
+    await sendEmail(email, subject, text, html);
 
     res.status(200).send('Subscription successful!');
   } catch (error) {
